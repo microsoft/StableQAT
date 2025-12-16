@@ -1,0 +1,4 @@
+include: arc_easy.yaml
+task: arc_challenge
+dataset_name: ARC-Challenge
+#dataset_path: /root/autodl-tmp/hub/lm_eval/ai2_arc

@@ -1,0 +1,17 @@
+compute_environment: LOCAL_MACHINE
+debug: false
+deepspeed_config:
+  deepspeed_multinode_launcher: nossh
+  zero_stage: 1
+  train_batch_size: "auto"
+  train_micro_batch_size_per_gpu: "auto"
+distributed_type: DEEPSPEED
+downcast_bf16: 'no'
+main_training_function: main
+mixed_precision: bf16
+rdzv_backend: static
+same_network: true
+tpu_env: []
+tpu_use_cluster: false
+tpu_use_sudo: false
+use_cpu: false
