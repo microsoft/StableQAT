@@ -103,9 +103,6 @@ class LsqBinaryTernaryExtension(torch.autograd.Function):
                 grad_alpha = torch.sum(grad_alpha, dim=-1, keepdim=True)
 
         if ctx.sine_soft_q:
-            '''
-            modified grad_x
-            '''
             alpha = 0.2
             cos_term = torch.cos(torch.pi * (ctx.x + ctx.y - 1))
             grad_harmonic = (1 + pow(2, 0.5) * alpha * torch.pi * cos_term) / (1 - pow(2, 0.5) * alpha * torch.pi * cos_term)
