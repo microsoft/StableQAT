@@ -1,6 +1,0 @@
-subscription_id: 5c9e4789-4852-4ffe-8551-d682affcbd74
-resource_group_name: manifold2-rg
-workspace_name: as-manifold2-sa-ws
-compute_name: /subscriptions/5c9e4789-4852-4ffe-8551-d682affcbd74/resourceGroups/manifold2-rg/providers/Microsoft.MachineLearningServices/virtualclusters/as-manifold2-sa-vc
-instance_type: Singularity.ND96r_H100_v5
-gpu_count_per_node: 8

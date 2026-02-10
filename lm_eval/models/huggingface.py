@@ -630,15 +630,35 @@ class HFLM(TemplateLM):
             # )
 
             from models.configuration_llama import LlamaConfig
+            from models.configuration_qwen3 import Qwen3Config
             from models.modeling_llama_quant import (
                 LlamaForCausalLM as LlamaForCausalLMQuant,
             )
+            from models.modeling_qwen3_quant import (
+                Qwen3ForCausalLM as Qwen3ForCausalLMQuant,
+            )
             from models.utils_quant import QuantizeLinear as QLinear
             from models.utils_quant_dsq import DSQLinear
-            from models import modeling_llama_quant
-            modeling_llama_quant.QuantizeLinear = DSQLinear if 'dsq' in pretrained else QLinear
-            config = LlamaConfig.from_pretrained(pretrained)
-            model = LlamaForCausalLMQuant.from_pretrained(
+            from models import modeling_llama_quant, modeling_qwen3_quant
+            import json
+
+            config_json = json.load(open(f"{pretrained}/config.json", "r"))
+            print("config_json:", config_json)
+            if 'qwen' in config_json.get('model_type', '').lower():
+                quant_class = modeling_qwen3_quant
+                model_class = Qwen3ForCausalLMQuant
+                config_class = Qwen3Config
+            elif 'llama' in config_json.get('model_type', '').lower():
+                quant_class = modeling_llama_quant
+                model_class = LlamaForCausalLMQuant
+                config_class = LlamaConfig
+            else:
+                raise NotImplementedError
+            
+            config = config_class.from_pretrained(pretrained)
+            quant_class.QuantizeLinear = DSQLinear if 'dsq' in pretrained else QLinear
+
+            model = model_class.from_pretrained(
                 pretrained_model_name_or_path=pretrained,
                 config=config,
                 cache_dir=None,

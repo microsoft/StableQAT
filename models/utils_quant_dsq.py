@@ -1,9 +1,3 @@
-# coding=utf-8
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-
-# This source code is licensed under the BSD-style license found in the
-# LICENSE file in the root directory of this source tree.
-
 import math
 
 import torch
@@ -119,7 +113,8 @@ class DSQLinear(nn.Linear):
         bias=False,
         w_bits=16,
         weight_layerwise=False,
-        sine_soft_q=False
+        sine_soft_q=False,
+        efficient=None,
     ):
         super(DSQLinear, self).__init__(*kargs, bias=False)
         self.w_bits = w_bits
@@ -137,14 +132,7 @@ class DSQLinear(nn.Linear):
 
         if self.w_bits >= 16:
             weight = self.weight
-        # elif self.w_bits == 2 or self.w_bits == 0:
-        #     weight = StretchedElasticQuant(
-        #         real_weights,
-        #         self.weight_clip_val,
-        #         self.w_bits,
-        #         self.weight_layerwise,
-        #     ).to(input_.dtype)
-        elif self.w_bits <= 4:
+        else:
             weight = LsqBinaryTernaryExtension(
                 real_weights,
                 self.weight_clip_val,
@@ -153,8 +141,6 @@ class DSQLinear(nn.Linear):
                 # self.sine_soft_q,
                 self.alpha_dsq
             ).to(input_.dtype)
-        else:
-            raise NotImplementedError
 
         out = nn.functional.linear(input_, weight)
         if self.bias is not None:

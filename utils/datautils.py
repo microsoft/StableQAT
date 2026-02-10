@@ -1,9 +1,3 @@
-# coding=utf-8
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-
-# This source code is licensed under the BSD-style license found in the
-# LICENSE file in the root directory of this source tree.
-
 import copy
 import json
 import logging
@@ -20,12 +14,6 @@ DEFAULT_PAD_TOKEN = "[PAD]"
 DEFAULT_EOS_TOKEN = "</s>"
 DEFAULT_BOS_TOKEN = "<s>"
 DEFAULT_UNK_TOKEN = "<unk>"
-
-# coding=utf-8
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-
-# This source code is licensed under the BSD-style license found in the
-# LICENSE file in the root directory of this source tree.
 
 import copy
 import json

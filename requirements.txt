@@ -1,0 +1,11 @@
+torch
+transformers==4.57.3
+accelerate>=0.26.0
+datasets==2.20.0
+sentencepiece
+tensorboardX
+sacrebleu
+evaluate
+peft==0.13.2
+more_itertools
+pytablewriter

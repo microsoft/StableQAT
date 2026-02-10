@@ -1,0 +1,54 @@
+# model
+model_path: "meta-llama/Llama-3.2-3B"
+# model_path: /root/autodl-tmp/hub/models/Llama-3.2-3B
+w_bits: 2
+sine_soft_q: 
+  enable: False
+  amplitude: null
+contain_weight_clip_val: False
+cache_dir: null
+dsq: False
+efficient: True
+
+# data
+eval_data_local_path:
+max_train_samples: -1
+max_eval_samples: -1
+model_max_length: 2048
+
+max_train_tokens: !!float 2e10
+fineweb_edu_data:
+  mix_ratio: 0.5
+  data_path: llama_3b_tokenized_data_fineweb_edu_10B_v1/train_data
+slimpajama_data:
+  mix_ratio: 0.5
+  data_path: llama_3b_tokenized_data_slimpajama_10b_v1/train_data
+
+# train
+train:
+  logging_dir: outputs/llama-3B/2Bits/baseline/logs
+  do_train: True
+  do_eval: False
+  fp16: True
+  bf16: False
+  num_train_epochs: 1
+  per_device_train_batch_size: 1
+  per_device_eval_batch_size: 1
+  gradient_accumulation_steps: 8
+  evaluation_strategy: "no"
+  save_strategy: "steps"
+  save_steps: 1000
+  report_to: "tensorboard"
+  save_total_limit: 1
+  learning_rate: !!float 1e-4
+  weight_decay: 0.
+  warmup_ratio: 0.
+  lr_scheduler_type: "cosine"
+  logging_steps: 1
+  tf32: False
+  gradient_checkpointing: False
+  # qat: True
+  optim: "adamw_torch"
+  remove_unused_columns: False
+  log_on_each_node: False
+

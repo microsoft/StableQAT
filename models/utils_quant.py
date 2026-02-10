@@ -1,15 +1,100 @@
-# coding=utf-8
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-
-# This source code is licensed under the BSD-style license found in the
-# LICENSE file in the root directory of this source tree.
-
 import math
 
 import torch
 import torch.nn as nn
 
-class LsqBinaryTernaryExtension(torch.autograd.Function):
+import torch
+import math
+
+@torch.compile
+def lsq_forward_kernel(input, alpha, qn, qp, num_bits):
+    inv_alpha = 1.0 / alpha
+    if num_bits == 1:
+        q_w = input.sign()
+    else:
+        q_w = (input * inv_alpha).round_().clamp_(qn, qp)
+    return q_w * alpha
+
+@torch.compile
+def lsq_backward_kernel(grad_output, input_, alpha, qn, qp, grad_scale, num_bits, layerwise, sine_config):
+    inv_alpha = 1.0 / alpha
+    v = input_ * inv_alpha
+    
+    mask_middle = (v >= qn) & (v <= qp)
+    v_bar = v.clamp(qn, qp)
+    
+    if num_bits > 1:
+        diff = v_bar.round().sub_(v)
+    else:
+        diff = v.sign().sub_(v)
+    
+    diff = torch.where(mask_middle, diff, v_bar)
+    grad_alpha_base = diff * grad_output * grad_scale
+    
+    if layerwise:
+        grad_alpha = grad_alpha_base.sum().view_as(alpha)
+    else:
+        grad_alpha = grad_alpha_base.flatten(1).sum(dim=1).view_as(alpha)
+
+    # Sine Soft Quantization
+    if sine_config['enable']:
+        PI = math.pi
+        coeff = sine_config['amplitude'] * 4.442882938158366 #sqrt(2) * pi
+        temp = (v + v.round()).mul_(PI)
+        sum_term = torch.zeros_like(temp)
+        for idx in range(coeff.shape[0]):
+            term = torch.cos(temp * (2 * idx + 1))
+            sum_term += (term * coeff[idx])
+        sum_term.add_(1.0)
+        grad_input = sum_term.reciprocal_().mul_(2.0).sub_(1.0)
+        grad_input = grad_input * mask_middle * grad_output
+    else:
+        grad_input = grad_output * mask_middle
+
+    return grad_input, grad_alpha
+
+class LsqBinaryTernaryExtensionEfficient(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input, alpha, num_bits, layerwise, sine_soft_q):
+        if num_bits >= 16:
+            return input
+        
+        qn = -1.0 if num_bits <= 1 else float(-(2 ** (num_bits - 1)))
+        qp = 1.0 if num_bits <= 1 else float(2 ** (num_bits - 1) - 1)
+        
+        alpha = torch.clamp(alpha, min=1e-5)
+        grad_scale = 1.0 / math.sqrt(input.numel() * max(qp, 1.0))
+
+        output = lsq_forward_kernel(input, alpha, qn, qp, num_bits)
+        
+        ctx.save_for_backward(input, alpha)
+        ctx.num_bits = num_bits
+        ctx.layerwise = layerwise
+        # ctx.sine_config = {
+        #     'enable': sine_soft_q['enable'],
+        #     'amplitude': sine_soft_q['amplitude'] if sine_soft_q['enable'] else None,
+        # }
+        ctx.sine_config = sine_soft_q
+        ctx.constants = (grad_scale, qn, qp)
+        
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        if ctx.num_bits >= 16:
+            return grad_output, None, None, None, None
+
+        input_, alpha = ctx.saved_tensors
+        grad_scale, qn, qp = ctx.constants
+        
+        grad_input, grad_alpha = lsq_backward_kernel(
+            grad_output, input_, alpha, qn, qp, grad_scale, 
+            ctx.num_bits, ctx.layerwise, ctx.sine_config
+        )
+
+        return grad_input, grad_alpha, None, None, None
+
+class LsqBinaryTernaryExtensionRegular(torch.autograd.Function):
     """
     Modified from Learned Step-size Quantization.
     https://arxiv.org/abs/1902.08153
@@ -49,7 +134,9 @@ class LsqBinaryTernaryExtension(torch.autograd.Function):
             q_w = input.sign()
         else:
             q_w = (input / alpha).round().clamp(Qn, Qp)
-        ctx.x, ctx.y = (input / alpha), (input / alpha).round()
+        # ctx.x, ctx.y = (input / alpha), (input / alpha).round()
+        # print("sine_soft_q:", sine_soft_q)
+        # print("sine_soft_q type:", type(sine_soft_q))
         ctx.sine_soft_q = sine_soft_q
         w_q = q_w * alpha
         return w_q
@@ -102,15 +189,21 @@ class LsqBinaryTernaryExtension(torch.autograd.Function):
                 )
                 grad_alpha = torch.sum(grad_alpha, dim=-1, keepdim=True)
 
-        if ctx.sine_soft_q:
-            amplifier = 0.2
-            cos_term = torch.cos(torch.pi * (ctx.x + ctx.y - 1))
-            grad_sine_soft = (1 + pow(2, 0.5) * amplifier * torch.pi * cos_term) / (1 - pow(2, 0.5) * amplifier * torch.pi * cos_term)
-            grad_input = indicate_middle * grad_output * grad_sine_soft
+        if ctx.sine_soft_q['enable']:
+            '''
+            modified grad_x
+            '''
+            alpha = ctx.sine_soft_q['amplitude']
+            item = torch.pi * (q_w + q_w.round())
+            sum = 0
+            for idx in range(len(alpha)):
+                sum += alpha[idx] * torch.cos((2*idx+1) * item)            
+            grad_x = (1 - pow(2, 0.5) * torch.pi * sum) / (1 + pow(2, 0.5) * torch.pi * sum)
+            grad_input = indicate_middle * grad_output * grad_x
         else:
             grad_input = indicate_middle * grad_output
+        
         return grad_input, grad_alpha, None, None, None
-
 
 class StretchedElasticQuant(torch.autograd.Function):
     """
@@ -166,6 +259,7 @@ class StretchedElasticQuant(torch.autograd.Function):
                 + shift
             ) / n_levels
         w_q = q_w * alpha
+        # ctx.x, ctx.y = (torch.clamp(input / alpha, -clip_val, clip_val) * n_levels - shift), q_w * n_levels
         return w_q
 
     @staticmethod
@@ -258,7 +352,8 @@ class QuantizeLinear(nn.Linear):
         bias=False,
         w_bits=16,
         weight_layerwise=False,
-        sine_soft_q=False
+        sine_soft_q=dict(),
+        efficient=False,
     ):
         super(QuantizeLinear, self).__init__(*kargs, bias=False)
         self.w_bits = w_bits
@@ -267,6 +362,11 @@ class QuantizeLinear(nn.Linear):
         # params for weight quant
         if self.w_bits < 16:
             self.weight_clip_val = nn.Parameter(torch.Tensor(self.weight.shape[0], 1))
+        self.efficient = efficient
+        self.sine_soft_q = {
+            'enable': sine_soft_q['enable'],
+            'amplitude': torch.tensor(sine_soft_q['amplitude']).cuda() if sine_soft_q['enable'] else None
+        }
 
     def forward(self, input_):
         # quantize weight
@@ -275,24 +375,24 @@ class QuantizeLinear(nn.Linear):
 
         if self.w_bits >= 16:
             weight = self.weight
-        elif self.w_bits == 2 or self.w_bits == 0:
-            weight = StretchedElasticQuant.apply(
-                real_weights,
-                self.weight_clip_val,
-                self.w_bits,
-                self.weight_layerwise,
-            ).to(input_.dtype)
-        elif self.w_bits <= 4:
-            weight = LsqBinaryTernaryExtension.apply(
-                real_weights,
-                self.weight_clip_val,
-                self.w_bits,
-                self.weight_layerwise,
-                self.sine_soft_q
-            ).to(input_.dtype)
         else:
-            raise NotImplementedError
-
+            if self.efficient:
+                weight = LsqBinaryTernaryExtensionEfficient.apply(
+                    real_weights,
+                    self.weight_clip_val,
+                    self.w_bits,
+                    self.weight_layerwise,
+                    self.sine_soft_q
+                ).to(input_.dtype)
+            else:
+                weight = LsqBinaryTernaryExtensionRegular.apply(
+                    real_weights,
+                    self.weight_clip_val,
+                    self.w_bits,
+                    self.weight_layerwise,
+                    self.sine_soft_q
+                ).to(input_.dtype)
+    
         out = nn.functional.linear(input_, weight)
         if self.bias is not None:
             out += self.bias.view(1, -1).expand_as(out)

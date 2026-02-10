@@ -1,0 +1,3 @@
+model_path: "Qwen/Qwen3-1.7B"
+# model_path: /root/autodl-tmp/hub/models/Qwen3-1.7B
+model_max_length: 2048

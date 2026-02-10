@@ -1,9 +1,3 @@
-# coding=utf-8
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-
-# This source code is licensed under the BSD-style license found in the
-# LICENSE file in the root directory of this source tree.
-
 import logging
 import os
 from typing import Dict
@@ -71,3 +65,20 @@ def create_named_param_groups(model):
         param_groups.append(group)
 
     return param_groups
+
+
+def get_second_last_checkpoint(output_dir: str) -> str:
+    """
+    When the last checkpoint is corrupted, get the second last checkpoint
+    """
+    ckpts = [
+        d for d in os.listdir(output_dir)
+        if d.startswith("checkpoint-")
+    ]
+    ckpts = sorted(ckpts, key=lambda x: int(x.split("-")[-1]))
+    
+    if len(ckpts) < 2:
+        print("No second last checkpoint found. avalilable checkpoints:", ckpts)
+        return None
+    
+    return os.path.join(output_dir, ckpts[-2])
