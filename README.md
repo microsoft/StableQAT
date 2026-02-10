@@ -66,3 +66,15 @@ To compare the time cost of StableQAT, DSQ, ParetoQ for Llama-3.2-1B, run:
 ```
 python efficiency_benchmark/compare_model_time_cost.py
 ```
+
+## Citation
+If you find this work useful, please cite our paper:
+
+```bibtex
+@article{chen2026stableqat,
+  title={StableQAT: Stable Quantization-Aware Training at Ultra-Low Bitwidths},
+  author={Chen, Tianyi and Chen, Sihan and Qu, Xiaoyi and Zhao, Dan and Yan, Ruomei and Ko, Jongwoo and Liang, Luming and Cameron, Pashmina},
+  journal={arXiv preprint arXiv:2601.19320},
+  year={2026}
+}
+```
